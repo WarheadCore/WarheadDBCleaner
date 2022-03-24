@@ -28,7 +28,6 @@
 #include "Tokenize.h"
 #include "Transaction.h"
 #include "Util.h"
-#include "StopWatch.h"
 #include <errmsg.h>
 #include <mysqld_error.h>
 
@@ -190,7 +189,7 @@ bool MySQLConnection::Execute(std::string_view sql)
         return false;
 
     {
-        StopWatch sw;
+        uint32 _s = getMSTime();
 
         if (mysql_query(m_Mysql, std::string(sql).c_str()))
         {
@@ -199,13 +198,13 @@ bool MySQLConnection::Execute(std::string_view sql)
             LOG_INFO("sql.sql", "SQL: {}", sql);
             LOG_ERROR("sql.sql", "[{}] {}", lErrno, mysql_error(m_Mysql));
 
-            if (_HandleMySQLErrno(lErrno)) // If it returns true, an error was handled successfully (i.e. reconnection)
-                return Execute(sql); // Try again
+            if (_HandleMySQLErrno(lErrno))  // If it returns true, an error was handled successfully (i.e. reconnection)
+                return Execute(sql);       // Try again
 
             return false;
         }
         else
-            LOG_DEBUG("sql.sql", "[{}] SQL: {}", sw, sql);
+            LOG_DEBUG("sql.sql", "[{} ms] SQL: {}", getMSTimeDiff(_s, getMSTime()), sql);
     }
 
     return true;
@@ -226,7 +225,7 @@ bool MySQLConnection::Execute(PreparedStatementBase* stmt)
     MYSQL_STMT* msql_STMT = m_mStmt->GetSTMT();
     MYSQL_BIND* msql_BIND = m_mStmt->GetBind();
 
-    StopWatch sw;
+    uint32 _s = getMSTime();
 
     if (mysql_stmt_bind_param(msql_STMT, msql_BIND))
     {
@@ -252,7 +251,7 @@ bool MySQLConnection::Execute(PreparedStatementBase* stmt)
         return false;
     }
 
-    LOG_DEBUG("sql.sql", "[{}] SQL(p): {}", sw, m_mStmt->getQueryString());
+    LOG_DEBUG("sql.sql", "[{} ms] SQL(p): {}", getMSTimeDiff(_s, getMSTime()), m_mStmt->getQueryString());
 
     m_mStmt->ClearParameters();
     return true;
@@ -274,7 +273,7 @@ bool MySQLConnection::_Query(PreparedStatementBase* stmt, MySQLPreparedStatement
     MYSQL_STMT* msql_STMT = m_mStmt->GetSTMT();
     MYSQL_BIND* msql_BIND = m_mStmt->GetBind();
 
-    StopWatch sw;
+    uint32 _s = getMSTime();
 
     if (mysql_stmt_bind_param(msql_STMT, msql_BIND))
     {
@@ -300,7 +299,7 @@ bool MySQLConnection::_Query(PreparedStatementBase* stmt, MySQLPreparedStatement
         return false;
     }
 
-    LOG_DEBUG("sql.sql", "[{}] SQL(p): {}", sw, m_mStmt->getQueryString());
+    LOG_DEBUG("sql.sql", "[{} ms] SQL(p): {}", getMSTimeDiff(_s, getMSTime()), m_mStmt->getQueryString());
 
     m_mStmt->ClearParameters();
 
@@ -333,7 +332,7 @@ bool MySQLConnection::_Query(std::string_view sql, MySQLResult** pResult, MySQLF
         return false;
 
     {
-        StopWatch sw;
+        uint32 _s = getMSTime();
 
         if (mysql_query(m_Mysql, std::string(sql).c_str()))
         {
@@ -347,7 +346,7 @@ bool MySQLConnection::_Query(std::string_view sql, MySQLResult** pResult, MySQLF
             return false;
         }
         else
-            LOG_DEBUG("sql.sql", "[{}] SQL: {}", sw, sql);
+            LOG_DEBUG("sql.sql", "[{} ms] SQL: {}", getMSTimeDiff(_s, getMSTime()), sql);
 
         *pResult = reinterpret_cast<MySQLResult*>(mysql_store_result(m_Mysql));
         *pRowCount = mysql_affected_rows(m_Mysql);
@@ -405,7 +404,7 @@ int MySQLConnection::ExecuteTransaction(std::shared_ptr<TransactionBase> transac
                 }
                 catch (const std::bad_variant_access& ex)
                 {
-                    LOG_CRIT("sql.sql", "> PreparedStatementBase not found in SQLElementData. {}", ex.what());
+                    LOG_FATAL("sql.sql", "> PreparedStatementBase not found in SQLElementData. {}", ex.what());
                     ABORT();
                 }
 
@@ -430,7 +429,7 @@ int MySQLConnection::ExecuteTransaction(std::shared_ptr<TransactionBase> transac
                 }
                 catch (const std::bad_variant_access& ex)
                 {
-                    LOG_CRIT("sql.sql", "> std::string not found in SQLElementData. {}", ex.what());
+                    LOG_FATAL("sql.sql", "> std::string not found in SQLElementData. {}", ex.what());
                     ABORT();
                 }
 
@@ -580,7 +579,7 @@ bool MySQLConnection::_HandleMySQLErrno(uint32 errNo, uint8 attempts /*= 5*/)
                 // Don't remove 'this' pointer unless you want to skip loading all prepared statements...
                 if (!this->PrepareStatements())
                 {
-                    LOG_CRIT("sql.sql", "Could not re-prepare statements!");
+                    LOG_FATAL("sql.sql", "Could not re-prepare statements!");
                     std::this_thread::sleep_for(10s);
                     std::abort();
                 }
@@ -597,7 +596,7 @@ bool MySQLConnection::_HandleMySQLErrno(uint32 errNo, uint8 attempts /*= 5*/)
             {
                 // Shut down the server when the mysql server isn't
                 // reachable for some time
-                LOG_CRIT("sql.sql", "Failed to reconnect to the MySQL server, terminating the server to prevent data corruption!");
+                LOG_FATAL("sql.sql", "Failed to reconnect to the MySQL server, terminating the server to prevent data corruption!");
 
                 // We could also initiate a shutdown through using std::raise(SIGTERM)
                 std::this_thread::sleep_for(10s);

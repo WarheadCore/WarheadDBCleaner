@@ -16,6 +16,8 @@
  */
 
 #include "Config.h"
+#include "DeadlineTimer.h"
+#include "IoContext.h"
 #include "StopWatch.h"
 #include "GitRevision.h"
 #include "Log.h"
@@ -24,31 +26,21 @@
 #include "IPLocation.h"
 #include "DatabaseEnv.h"
 #include "DatabaseLoader.h"
-#include "OpenSSLCrypto.h"
-#include "Discord.h"
-#include "DiscordConfig.h"
-#include "DiscordSocket.h"
-#include "DiscordSocketMgr.h"
-#include <boost/asio/signal_set.hpp>
+#include "DBCleaner.h"
 #include <boost/version.hpp>
-#include <openssl/crypto.h>
-#include <openssl/opensslv.h>
 
-#ifndef _WARHEAD_DISCORD_CONFIG
-#define _WARHEAD_DISCORD_CONFIG "WarheadDBCleaner.conf"
+#ifndef _WARHEAD_DB_CLEANER_CONFIG
+#define _WARHEAD_DB_CLEANER_CONFIG "WarheadDBCleaner.conf"
 #endif
 
 bool StartDB();
 void StopDB();
-void SignalHandler(std::weak_ptr<Warhead::Asio::IoContext> ioContextRef, boost::system::error_code const& error, int signalNumber);
-void DiscordUpdateLoop();
+void KeepDatabaseAliveHandler(std::weak_ptr<Warhead::Asio::DeadlineTimer> dbPingTimerRef, boost::system::error_code const& error);
 
 int main(int argc, char** argv)
 {
-    signal(SIGABRT, &Warhead::AbortHandler);
-
     // Command line parsing to get the configuration file name
-    std::string configFile = sConfigMgr->GetConfigPath() + std::string(_WARHEAD_DISCORD_CONFIG);
+    std::string configFile = sConfigMgr->GetConfigPath() + std::string(_WARHEAD_DB_CLEANER_CONFIG);
     int count = 1;
 
     while (count < argc)
@@ -72,7 +64,7 @@ int main(int argc, char** argv)
     // Init logging
     sLog->Initialize();
 
-    Warhead::Logo::Show("discordserver",
+    Warhead::Logo::Show("dbcleaner",
         [](std::string_view text)
         {
             LOG_INFO("server", text);
@@ -80,45 +72,9 @@ int main(int argc, char** argv)
         []()
         {
             LOG_INFO("server", "> Using configuration file:       {}", sConfigMgr->GetFilename());
-            LOG_INFO("server", "> Using SSL version:              {} (library: {})", OPENSSL_VERSION_TEXT, SSLeay_version(SSLEAY_VERSION));
             LOG_INFO("server", "> Using Boost version:            {}.{}.{}", BOOST_VERSION / 100000, BOOST_VERSION / 100 % 1000, BOOST_VERSION % 100);
         }
     );
-
-    OpenSSLCrypto::threadsSetup();
-
-    std::shared_ptr<void> opensslHandle(nullptr, [](void*) { OpenSSLCrypto::threadsCleanup(); });
-
-    std::shared_ptr<Warhead::Asio::IoContext> ioContext = std::make_shared<Warhead::Asio::IoContext>();
-
-    // Set signal handlers
-    boost::asio::signal_set signals(*ioContext, SIGINT, SIGTERM);
-#if WARHEAD_PLATFORM == WARHEAD_PLATFORM_WINDOWS
-    signals.add(SIGBREAK);
-#endif
-    signals.async_wait(std::bind(&SignalHandler, std::weak_ptr<Warhead::Asio::IoContext>(ioContext), std::placeholders::_1, std::placeholders::_2));
-
-    // Start the Boost based thread pool
-    int numThreads = sConfigMgr->GetOption<int32>("ThreadPool", 1);
-    std::shared_ptr<std::vector<std::thread>> threadPool(new std::vector<std::thread>(), [ioContext](std::vector<std::thread>* del)
-    {
-        ioContext->stop();
-        for (auto& thr : *del)
-            thr.join();
-
-        delete del;
-    });
-
-    if (numThreads < 1)
-        numThreads = 1;
-
-    for (int i = 0; i < numThreads; ++i)
-    {
-        threadPool->push_back(std::thread([ioContext]()
-        {
-            ioContext->run();
-        }));
-    }
 
     // Initialize the database connection
     if (!StartDB())
@@ -126,83 +82,25 @@ int main(int argc, char** argv)
 
     std::shared_ptr<void> dbHandle(nullptr, [](void*) { StopDB(); });
 
-    // Load IP Location Database
-    sIPLocation->Load();
+    //std::shared_ptr<Warhead::Asio::IoContext> ioContext = std::make_shared<Warhead::Asio::IoContext>();
 
-    // Init server
-    sDiscord->SetInitialDiscordSettings();
+    LOG_INFO("server", "{} (dbcleaner-daemon) ready...", GitRevision::GetFullVersion());
 
-    // Launch the worldserver listener socket
-    uint16 worldPort = sDiscordConfig->GetOption<uint16>("ServerPort");
-    std::string worldListener = sConfigMgr->GetOption<std::string>("BindIP", "0.0.0.0");
+    sDBCleaner->Init();
 
-    int networkThreads = sConfigMgr->GetOption<int32>("Network.Threads", 1);
-    if (networkThreads <= 0)
-    {
-        LOG_ERROR("server", "Network.Threads must be greater than 0");
-        Discord::StopNow(ERROR_EXIT_CODE);
-        return 1;
-    }
+    //// Enabled a timed callback for handling the database keep alive ping
+    //std::shared_ptr<Warhead::Asio::DeadlineTimer> dbPingTimer = std::make_shared<Warhead::Asio::DeadlineTimer>(*ioContext);
+    //dbPingTimer->expires_from_now(boost::posix_time::minutes(30));
+    //dbPingTimer->async_wait(std::bind(&KeepDatabaseAliveHandler, std::weak_ptr<Warhead::Asio::DeadlineTimer>(dbPingTimer), std::placeholders::_1));
 
-    if (!sDiscordSocketMgr.StartDiscordNetwork(*ioContext, worldListener, worldPort, networkThreads))
-    {
-        LOG_ERROR("server", "Failed to initialize network");
-        Discord::StopNow(ERROR_EXIT_CODE);
-        return 1;
-    }
-
-    std::shared_ptr<void> sDiscordSocketMgrHandle(nullptr, [](void*)
-    {
-        sDiscord->KickAll();              // save and kick all players
-        sDiscord->UpdateSessions(1);      // real players unload required UpdateSessions call
-
-        sDiscordSocketMgr.StopNetwork();
-
-        //sDiscord->SendServerShutdown();
-    });
-
-    LOG_INFO("server", "{} (discordserver-daemon) ready...", GitRevision::GetFullVersion());
-
-    DiscordUpdateLoop();
-
-    // Shutdown starts here
-    threadPool.reset();
+    //// Start the io service worker loop
+    //ioContext->run();
 
     LOG_INFO("server", "Halting process...");
 
-    // 0 - normal shutdown
-    // 1 - shutdown at error
-    // 2 - restart command used, this code can be used by restarter for restart Warheadd
+    //dbPingTimer->cancel();
 
-    return Discord::GetExitCode();
-}
-
-void DiscordUpdateLoop()
-{
-    uint32 realCurrTime = 0;
-    uint32 realPrevTime = getMSTime();
-
-    DiscordDatabase.WarnAboutSyncQueries(true);
-
-    ///- While we have not Discord::m_stopEvent, update the world
-    while (!Discord::IsStopped())
-    {
-        ++Discord::m_worldLoopCounter;
-        realCurrTime = getMSTime();
-
-        uint32 diff = getMSTimeDiff(realPrevTime, realCurrTime);
-        if (!diff)
-        {
-            // sleep until enough time passes that we can update all timers
-            std::this_thread::sleep_for(1ms);
-            continue;
-        }
-
-        sDiscord->Update(diff);
-        realPrevTime = realCurrTime;
-    }
-
-    DiscordDatabase.WarnAboutSyncQueries(false);
+    return 0;
 }
 
 /// Initialize connection to the database
@@ -215,25 +113,36 @@ bool StartDB()
     // Increasing it is just silly since only 1 will be used ever.
     DatabaseLoader loader("server");
     loader
-        .AddDatabase(DiscordDatabase, "Discord");
+        .AddDatabase(CharacterDatabase, "Character")
+        .AddDatabase(WorldDatabase, "World");
 
     if (!loader.Load())
         return false;
 
-    LOG_INFO("server", "Started discord database connection pool.");
+    LOG_INFO("server", "Started database connection pool.");
     return true;
 }
 
 /// Close the connection to the database
 void StopDB()
 {
-    DiscordDatabase.Close();
+    CharacterDatabase.Close();
+    WorldDatabase.Close();
     MySQL::Library_End();
 }
 
-void SignalHandler(std::weak_ptr<Warhead::Asio::IoContext> ioContextRef, boost::system::error_code const& error, int /*signalNumber*/)
+void KeepDatabaseAliveHandler(std::weak_ptr<Warhead::Asio::DeadlineTimer> dbPingTimerRef, boost::system::error_code const& error)
 {
     if (!error)
-        Discord::StopNow(SHUTDOWN_EXIT_CODE);
-}
+    {
+        if (std::shared_ptr<Warhead::Asio::DeadlineTimer> dbPingTimer = dbPingTimerRef.lock())
+        {
+            LOG_INFO("server", "Ping MySQL to keep connection alive");
+            CharacterDatabase.KeepAlive();
+            WorldDatabase.KeepAlive();
 
+            dbPingTimer->expires_from_now(boost::posix_time::minutes(30));
+            dbPingTimer->async_wait(std::bind(&KeepDatabaseAliveHandler, dbPingTimerRef, std::placeholders::_1));
+        }
+    }
+}

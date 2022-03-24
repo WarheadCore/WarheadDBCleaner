@@ -17,4 +17,6 @@
 
 #include "DatabaseEnv.h"
 
-DatabaseWorkerPool<DiscordDatabaseConnection> DiscordDatabase;
+DatabaseWorkerPool<WorldDatabaseConnection> WorldDatabase;
+DatabaseWorkerPool<CharacterDatabaseConnection> CharacterDatabase;
+DatabaseWorkerPool<LoginDatabaseConnection> LoginDatabase;

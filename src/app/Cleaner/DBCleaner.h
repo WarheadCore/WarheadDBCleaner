@@ -15,12 +15,26 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "CryptoRandom.h"
-#include "Errors.h"
-#include <openssl/rand.h>
+#ifndef _DB_CLEANER_H_
+#define _DB_CLEANER_H_
 
-void Warhead::Crypto::GetRandomBytes(uint8* buf, size_t len)
+#include "Define.h"
+#include <memory>
+
+class DBCleaner
 {
-    int result = RAND_bytes(buf, len);
-    ASSERT(result == 1);
-}
+public:
+    DBCleaner() = default;
+    ~DBCleaner() = default;
+
+    static std::shared_ptr<DBCleaner> instance();
+
+    void Init();
+
+private:
+
+};
+
+#define sDBCleaner DBCleaner::instance()
+
+#endif

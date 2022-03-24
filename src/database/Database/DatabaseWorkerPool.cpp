@@ -17,9 +17,10 @@
 
 #include "DatabaseWorkerPool.h"
 #include "AdhocStatement.h"
+#include "CharacterDatabase.h"
 #include "Errors.h"
 #include "Log.h"
-#include "DiscordDatabase.h"
+#include "LoginDatabase.h"
 #include "MySQLPreparedStatement.h"
 #include "MySQLWorkaround.h"
 #include "PCQueue.h"
@@ -29,6 +30,7 @@
 #include "QueryResult.h"
 #include "SQLOperation.h"
 #include "Transaction.h"
+#include "WorldDatabase.h"
 #include <limits>
 #include <mysqld_error.h>
 
@@ -71,8 +73,8 @@ DatabaseWorkerPool<T>::DatabaseWorkerPool() :
     bool isSameClientDB    = true; // Client version 3.2.3?
 #endif
 
-    WPFatal(isSupportClientDB, "WarheadCore does not support MySQL versions below 5.7 and MariaDB 10.3\n");
-    WPFatal(isSameClientDB, "Used MySQL library version ({} id {}) does not match the version id used to compile WarheadCore (id {}).\n",
+    WPFatal(isSupportClientDB, "WarheadCore does not support MySQL versions below 5.7 and MariaDB 10.3\nSearch the wiki for ACE00043 in Common Errors (https://www.azerothcore.org/wiki/common-errors).");
+    WPFatal(isSameClientDB, "Used MySQL library version ({} id {}) does not match the version id used to compile WarheadCore (id {}).\nSearch the wiki for ACE00046 in Common Errors (https://www.azerothcore.org/wiki/common-errors).",
         mysql_get_client_info(), mysql_get_client_version(), MYSQL_VERSION_ID);
 }
 
@@ -356,7 +358,7 @@ template <class T>
 void DatabaseWorkerPool<T>::KeepAlive()
 {
     //! Ping synchronous connections
-    for (auto const& connection : _connections[IDX_SYNCH])
+    for (auto& connection : _connections[IDX_SYNCH])
     {
         if (connection->LockIfReady())
         {
@@ -526,4 +528,6 @@ void DatabaseWorkerPool<T>::ExecuteOrAppend(SQLTransaction<T>& trans, PreparedSt
         trans->Append(stmt);
 }
 
-template class WH_DATABASE_API DatabaseWorkerPool<DiscordDatabaseConnection>;
+template class WH_DATABASE_API DatabaseWorkerPool<LoginDatabaseConnection>;
+template class WH_DATABASE_API DatabaseWorkerPool<WorldDatabaseConnection>;
+template class WH_DATABASE_API DatabaseWorkerPool<CharacterDatabaseConnection>;

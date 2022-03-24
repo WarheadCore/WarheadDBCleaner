@@ -15,26 +15,26 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "DiscordDatabase.h"
+#include "CharacterDatabase.h"
 #include "MySQLPreparedStatement.h"
 
-void DiscordDatabaseConnection::DoPrepareStatements()
+void CharacterDatabaseConnection::DoPrepareStatements()
 {
     if (!m_reconnecting)
-        m_stmts.resize(MAX_DISCORD_DATABASE_STATEMENTS);
+        m_stmts.resize(MAX_CHARACTERDATABASE_STATEMENTS);
 
-    PrepareStatement(DISCORD_SEL_ACCOUNT_INFO_BY_NAME, "SELECT `ID` FROM `account` WHERE `Name` = ? LIMIT 1", CONNECTION_ASYNC);
-    PrepareStatement(DISCORD_SEL_IP_INFO, "SELECT unbandate > UNIX_TIMESTAMP() OR unbandate = bandate AS banned, NULL as country FROM ip_banned WHERE ip = ?", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_SEL_ITEM_INSTANCE, "SELECT `guid` FROM `item_instance` ORDER BY `guid`", CONNECTION_SYNCH);
+    PrepareStatement(CHAR_UPD_ITEM_INSTANCE, "UPDATE item_instance SET `guid` = ? WHERE `guid` = ?", CONNECTION_ASYNC);
 }
 
-DiscordDatabaseConnection::DiscordDatabaseConnection(MySQLConnectionInfo& connInfo) : MySQLConnection(connInfo)
+CharacterDatabaseConnection::CharacterDatabaseConnection(MySQLConnectionInfo& connInfo) : MySQLConnection(connInfo)
 {
 }
 
-DiscordDatabaseConnection::DiscordDatabaseConnection(ProducerConsumerQueue<SQLOperation*>* q, MySQLConnectionInfo& connInfo) : MySQLConnection(q, connInfo)
+CharacterDatabaseConnection::CharacterDatabaseConnection(ProducerConsumerQueue<SQLOperation*>* q, MySQLConnectionInfo& connInfo) : MySQLConnection(q, connInfo)
 {
 }
 
-DiscordDatabaseConnection::~DiscordDatabaseConnection()
+CharacterDatabaseConnection::~CharacterDatabaseConnection()
 {
 }

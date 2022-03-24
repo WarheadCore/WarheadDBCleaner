@@ -15,12 +15,12 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _DISCORD_DATABASE_H_
-#define _DISCORD_DATABASE_H_
+#ifndef _CHARACTERDATABASE_H
+#define _CHARACTERDATABASE_H
 
 #include "MySQLConnection.h"
 
-enum DiscordDatabaseStatements : uint32
+enum CharacterDatabaseStatements : uint32
 {
     /*  Naming standard for defines:
         {DB}_{SEL/INS/UPD/DEL/REP}_{Summary of data changed}
@@ -28,21 +28,21 @@ enum DiscordDatabaseStatements : uint32
         name for a suiting suffix.
     */
 
-    DISCORD_SEL_ACCOUNT_INFO_BY_NAME,
-    DISCORD_SEL_IP_INFO,
+    CHAR_SEL_ITEM_INSTANCE,
+    CHAR_UPD_ITEM_INSTANCE,
 
-    MAX_DISCORD_DATABASE_STATEMENTS
+    MAX_CHARACTERDATABASE_STATEMENTS
 };
 
-class WH_DATABASE_API DiscordDatabaseConnection : public MySQLConnection
+class WH_DATABASE_API CharacterDatabaseConnection : public MySQLConnection
 {
 public:
-    using Statements = DiscordDatabaseStatements;
+    typedef CharacterDatabaseStatements Statements;
 
     //- Constructors for sync and async connections
-    DiscordDatabaseConnection(MySQLConnectionInfo& connInfo);
-    DiscordDatabaseConnection(ProducerConsumerQueue<SQLOperation*>* q, MySQLConnectionInfo& connInfo);
-    ~DiscordDatabaseConnection() override;
+    CharacterDatabaseConnection(MySQLConnectionInfo& connInfo);
+    CharacterDatabaseConnection(ProducerConsumerQueue<SQLOperation*>* q, MySQLConnectionInfo& connInfo);
+    ~CharacterDatabaseConnection() override;
 
     //- Loads database type specific prepared statements
     void DoPrepareStatements() override;

@@ -74,9 +74,9 @@ BEGIN
         BLOCK "080004b0"
         BEGIN
             VALUE "CompanyName",        VER_COMPANYNAME_STR
-            VALUE "FileDescription",    "Warhead Fix Daemon"
+            VALUE "FileDescription",    "Warhead DB Cleaner"
             VALUE "FileVersion",        VER_FILEVERSION_STR
-            VALUE "InternalName",       "Cleanup"
+            VALUE "InternalName",       "DB Cleaner"
             VALUE "LegalCopyright",     VER_LEGALCOPYRIGHT_STR
             VALUE "OriginalFilename",   "WarheadDBCleaner.exe"
             VALUE "ProductName",        "WarheadDBCleaner"

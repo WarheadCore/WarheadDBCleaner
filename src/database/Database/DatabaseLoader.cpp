@@ -17,7 +17,6 @@
 
 #include "DatabaseLoader.h"
 #include "Config.h"
-#include "DBUpdater.h"
 #include "DatabaseEnv.h"
 #include "Duration.h"
 #include "Log.h"
@@ -25,18 +24,13 @@
 #include <mysqld_error.h>
 #include <thread>
 
-DatabaseLoader::DatabaseLoader(std::string_view logger, uint32 const defaultUpdateMask, std::string_view modulesList)
-    : _logger(std::string(logger)),
-    _modulesList(modulesList),
-    _autoSetup(sConfigMgr->GetOption<bool>("Updates.AutoSetup", true)),
-    _updateFlags(sConfigMgr->GetOption<uint32>("Updates.EnableDatabases", defaultUpdateMask)) { }
+DatabaseLoader::DatabaseLoader(std::string const& logger)
+    : _logger(logger) { }
 
 template <class T>
 DatabaseLoader& DatabaseLoader::AddDatabase(DatabaseWorkerPool<T>& pool, std::string const& name)
 {
-    bool const updatesEnabledForThis = DBUpdater<T>::IsEnabled(_updateFlags);
-
-    _open.push([this, name, updatesEnabledForThis, &pool]() -> bool
+    _open.push([this, name, &pool]() -> bool
     {
         std::string const dbString = sConfigMgr->GetOption<std::string>(name + "DatabaseInfo", "");
         if (dbString.empty())
@@ -83,14 +77,6 @@ DatabaseLoader& DatabaseLoader::AddDatabase(DatabaseWorkerPool<T>& pool, std::st
                 }
             }
 
-            // Database does not exist
-            if ((error == ER_BAD_DB_ERROR) && updatesEnabledForThis && _autoSetup)
-            {
-                // Try to create the database and connect again if auto setup is enabled
-                if (DBUpdater<T>::Create(pool) && (!pool.Open()))
-                    error = 0;
-            }
-
             // If the error wasn't handled quit
             if (error)
             {
@@ -109,32 +95,6 @@ DatabaseLoader& DatabaseLoader::AddDatabase(DatabaseWorkerPool<T>& pool, std::st
         return true;
     });
 
-    // Populate and update only if updates are enabled for this pool
-    if (updatesEnabledForThis)
-    {
-        _populate.push([this, name, &pool]() -> bool
-        {
-            if (!DBUpdater<T>::Populate(pool))
-            {
-                LOG_ERROR(_logger, "Could not populate the {} database, see log for details.", name);
-                return false;
-            }
-
-            return true;
-        });
-
-        _update.push([this, name, &pool]() -> bool
-        {
-            if (!DBUpdater<T>::Update(pool, _modulesList))
-            {
-                LOG_ERROR(_logger, "Could not update the {} database, see log for details.", name);
-                return false;
-            }
-
-            return true;
-        });
-    }
-
     _prepare.push([this, name, &pool]() -> bool
     {
         if (!pool.PrepareStatements())
@@ -151,16 +111,7 @@ DatabaseLoader& DatabaseLoader::AddDatabase(DatabaseWorkerPool<T>& pool, std::st
 
 bool DatabaseLoader::Load()
 {
-    if (!_updateFlags)
-        LOG_INFO("sql.updates", "Automatic database updates are disabled for all databases!");
-
     if (!OpenDatabases())
-        return false;
-
-    if (!PopulateDatabases())
-        return false;
-
-    if (!UpdateDatabases())
         return false;
 
     if (!PrepareStatements())
@@ -172,16 +123,6 @@ bool DatabaseLoader::Load()
 bool DatabaseLoader::OpenDatabases()
 {
     return Process(_open);
-}
-
-bool DatabaseLoader::PopulateDatabases()
-{
-    return Process(_populate);
-}
-
-bool DatabaseLoader::UpdateDatabases()
-{
-    return Process(_update);
 }
 
 bool DatabaseLoader::PrepareStatements()
@@ -212,5 +153,10 @@ bool DatabaseLoader::Process(std::queue<Predicate>& queue)
 }
 
 template WH_DATABASE_API
-DatabaseLoader& DatabaseLoader::AddDatabase<DiscordDatabaseConnection>(DatabaseWorkerPool<DiscordDatabaseConnection>&, std::string const&);
+DatabaseLoader& DatabaseLoader::AddDatabase<LoginDatabaseConnection>(DatabaseWorkerPool<LoginDatabaseConnection>&, std::string const&);
 
+template WH_DATABASE_API
+DatabaseLoader& DatabaseLoader::AddDatabase<CharacterDatabaseConnection>(DatabaseWorkerPool<CharacterDatabaseConnection>&, std::string const&);
+
+template WH_DATABASE_API
+DatabaseLoader& DatabaseLoader::AddDatabase<WorldDatabaseConnection>(DatabaseWorkerPool<WorldDatabaseConnection>&, std::string const&);

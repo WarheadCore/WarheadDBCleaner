@@ -50,7 +50,6 @@ target_link_libraries(common
     fmt
     threads
     utf8cpp
-    openssl
     Poco::Foundation)
 
 set_target_properties(common

@@ -29,14 +29,18 @@ using QueryResult = std::shared_ptr<ResultSet>;
 using QueryResultFuture = std::future<QueryResult>;
 using QueryResultPromise = std::promise<QueryResult>;
 
-class DiscordDatabaseConnection;
+class CharacterDatabaseConnection;
+class LoginDatabaseConnection;
+class WorldDatabaseConnection;
 
 class PreparedStatementBase;
 
 template<typename T>
 class PreparedStatement;
 
-using DiscordDatabasePreparedStatement = PreparedStatement<DiscordDatabaseConnection>;
+using CharacterDatabasePreparedStatement = PreparedStatement<CharacterDatabaseConnection>;
+using LoginDatabasePreparedStatement = PreparedStatement<LoginDatabaseConnection>;
+using WorldDatabasePreparedStatement = PreparedStatement<WorldDatabaseConnection>;
 
 class PreparedResultSet;
 using PreparedQueryResult = std::shared_ptr<PreparedResultSet>;
@@ -63,7 +67,9 @@ class TransactionCallback;
 template<typename T>
 using SQLTransaction = std::shared_ptr<Transaction<T>>;
 
-using DiscordDatabaseTransaction = SQLTransaction<DiscordDatabaseConnection>;
+using CharacterDatabaseTransaction = SQLTransaction<CharacterDatabaseConnection>;
+using LoginDatabaseTransaction = SQLTransaction<LoginDatabaseConnection>;
+using WorldDatabaseTransaction = SQLTransaction<WorldDatabaseConnection>;
 
 class SQLQueryHolderBase;
 using QueryResultHolderFuture = std::future<void>;
@@ -72,7 +78,9 @@ using QueryResultHolderPromise = std::promise<void>;
 template<typename T>
 class SQLQueryHolder;
 
-using DiscordDatabaseQueryHolder = SQLQueryHolder<DiscordDatabaseConnection>;
+using CharacterDatabaseQueryHolder = SQLQueryHolder<CharacterDatabaseConnection>;
+using LoginDatabaseQueryHolder = SQLQueryHolder<LoginDatabaseConnection>;
+using WorldDatabaseQueryHolder = SQLQueryHolder<WorldDatabaseConnection>;
 
 class SQLQueryHolderCallback;
 
